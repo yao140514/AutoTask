@@ -224,23 +224,42 @@ class MainActivity : AppCompatActivity() {
                     if (manual) toast("检查更新失败，请稍后重试")
                     return@runOnUiThread
                 }
-                if (!UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME)) {
-                    if (manual) toast("已是最新版本 v${BuildConfig.VERSION_NAME}")
+                val appVersion = BuildConfig.VERSION_NAME
+                val appUpdate = UpdateChecker.isNewer(release.version, appVersion)
+                val moduleVersion = readModuleVersion()
+                val moduleUpdate = moduleVersion != null && UpdateChecker.isNewer(release.version, moduleVersion)
+
+                if (!appUpdate && !moduleUpdate) {
+                    if (manual) toast("已是最新版本 v$appVersion")
                     return@runOnUiThread
                 }
                 val prefs = getSharedPreferences("update", MODE_PRIVATE)
                 if (prefs.getString("skip_version", "") == release.version) {
                     return@runOnUiThread
                 }
-                showUpdateDialog(release)
+                showUpdateDialog(release, appVersion, appUpdate, moduleVersion, moduleUpdate)
             }
         }
     }
 
-    private fun showUpdateDialog(release: UpdateChecker.Release) {
+    private fun showUpdateDialog(
+        release: UpdateChecker.Release,
+        appVersion: String,
+        appUpdate: Boolean,
+        moduleVersion: String?,
+        moduleUpdate: Boolean
+    ) {
+        val sb = StringBuilder()
+        sb.append("类型：${release.typeLabel}\n")
+        if (release.name.isNotBlank()) sb.append(release.name).append("\n")
+        sb.append("\n")
+        if (appUpdate) sb.append("• 应用：v$appVersion → v${release.version}\n")
+        if (moduleUpdate) sb.append("• 增强模块：v$moduleVersion → v${release.version}\n")
+        sb.append("\n是否前往下载？")
+
         AlertDialog.Builder(this)
             .setTitle("发现新版本 v${release.version}")
-            .setMessage("类型：${release.typeLabel}\n${release.name}\n\n是否前往下载？")
+            .setMessage(sb.toString())
             .setPositiveButton("下载更新") { _, _ ->
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.releaseTagUrl(release.version))))
@@ -253,6 +272,17 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /** 读取已安装增强模块的版本号（未安装返回 null） */
+    private fun readModuleVersion(): String? {
+        return try {
+            val r = Shell.cmd("cat /data/adb/modules/autotask/module.prop").exec()
+            r.out.firstOrNull { it.startsWith("version=") }
+                ?.removePrefix("version=")?.trim()?.removePrefix("v")?.ifBlank { null }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     // ==================== 备份 / 恢复 ====================

@@ -26,8 +26,10 @@ enum class ActionType(val label: String) {
     SHELL("执行命令"),
     VOLUME("调整音量"),
     DELAY("延时等待"),
+    RANDOM_DELAY("随机延时"),
     SET_VAR("设置变量"),
-    CONDITION("条件判断");
+    CONDITION("条件判断"),
+    HTTP_REQUEST("HTTP 请求");
 }
 
 /** 音量通道（streamCode 同时是 AudioManager 的流类型常量） */
@@ -55,7 +57,12 @@ data class Action(
     var volume: Int = 50,
     var varName: String = "",
     var varValue: String = "",
-    var condition: String = "screen_on"
+    var condition: String = "screen_on",
+    // 随机延时
+    var minDelay: Int = 1000,
+    var maxDelay: Int = 3000,
+    // HTTP 请求（复用 url 字段作为地址）
+    var httpMethod: String = "GET"
 ) {
     val summary: String
         get() = when (type) {
@@ -70,8 +77,10 @@ data class Action(
             ActionType.SHELL -> "命令: $shellCmd"
             ActionType.VOLUME -> "音量 ${volumeStream.label}→$volume"
             ActionType.DELAY -> "延时 ${duration}ms"
+            ActionType.RANDOM_DELAY -> "随机延时 ${minDelay}~${maxDelay}ms"
             ActionType.SET_VAR -> "变量 $varName=$varValue"
             ActionType.CONDITION -> "条件: ${conditionText()}"
+            ActionType.HTTP_REQUEST -> "HTTP $httpMethod $url"
         }
 
     fun conditionText(): String = when {

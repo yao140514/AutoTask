@@ -13,6 +13,9 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.topjohnwu.superuser.Shell
 import rikka.shizuku.Shizuku
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.random.Random
 
 /**
  * 任务执行器：按顺序执行一个任务内的多个动作，支持三种后端（Root / Shizuku / 无障碍）。
@@ -49,8 +52,10 @@ object TaskExecutor {
             ActionType.SHELL -> shell(backend, substitute(a.shellCmd, vars))
             ActionType.VOLUME -> setVolume(backend, context, a.volumeStream, a.volume)
             ActionType.DELAY -> Thread.sleep(a.duration.coerceAtLeast(0).toLong())
+            ActionType.RANDOM_DELAY -> randomDelay(a.minDelay, a.maxDelay)
             ActionType.SET_VAR -> vars[a.varName] = a.varValue
             ActionType.CONDITION -> {} // 已在 execute 中处理
+            ActionType.HTTP_REQUEST -> httpRequest(a.url, a.httpMethod)
         }
     }
 
@@ -240,6 +245,35 @@ object TaskExecutor {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
+            }
+        }
+    }
+
+    // ==================== 随机延时 / HTTP 请求 ====================
+
+    private fun randomDelay(min: Int, max: Int) {
+        val lo = min.coerceAtLeast(0)
+        val hi = max.coerceAtLeast(lo)
+        val delay = if (hi > lo) lo + Random.nextInt(hi - lo + 1) else lo
+        Thread.sleep(delay.toLong())
+    }
+
+    private fun httpRequest(url: String, method: String) {
+        if (url.isBlank()) return
+        var conn: HttpURLConnection? = null
+        try {
+            conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = method.uppercase().ifBlank { "GET" }
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
+            conn.connect()
+            conn.responseCode
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
             }
         }
     }

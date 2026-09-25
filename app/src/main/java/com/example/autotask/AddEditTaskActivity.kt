@@ -58,6 +58,7 @@ class AddEditTaskActivity : AppCompatActivity() {
         weeklySection = findViewById(R.id.weeklySection)
         actionListContainer = findViewById(R.id.actionListContainer)
         val btnAddAction = findViewById<Button>(R.id.btnAddAction)
+        val btnTest = findViewById<Button>(R.id.btnTest)
         val btnSave = findViewById<Button>(R.id.btnSave)
 
         cbMon = findViewById(R.id.cbMon); cbTue = findViewById(R.id.cbTue)
@@ -83,6 +84,7 @@ class AddEditTaskActivity : AppCompatActivity() {
         }
 
         btnAddAction.setOnClickListener { showActionDialog(-1) }
+        btnTest.setOnClickListener { testRun() }
         btnSave.setOnClickListener { save() }
 
         editingId = intent.getIntExtra("id", -1)
@@ -225,6 +227,10 @@ class AddEditTaskActivity : AppCompatActivity() {
                     paramsBox.addView(input("volume", "音量(0-100)", d.volume.toString()))
                 }
                 ActionType.DELAY -> paramsBox.addView(input("duration", "延时(ms)", d.duration.toString()))
+                ActionType.RANDOM_DELAY -> {
+                    paramsBox.addView(input("mindelay", "最小延时(ms)", d.minDelay.toString()))
+                    paramsBox.addView(input("maxdelay", "最大延时(ms)", d.maxDelay.toString()))
+                }
                 ActionType.SET_VAR -> {
                     paramsBox.addView(input("varname", "变量名", d.varName))
                     paramsBox.addView(input("varvalue", "变量值", d.varValue))
@@ -237,6 +243,10 @@ class AddEditTaskActivity : AppCompatActivity() {
                     }
                     paramsBox.addView(spinner("condition", resources.getStringArray(R.array.condition_options).toList(), condPos))
                     paramsBox.addView(input("batt", "电量阈值(%)", d.condition.removePrefix("battery>").ifBlank { "50" }))
+                }
+                ActionType.HTTP_REQUEST -> {
+                    paramsBox.addView(spinner("httpmethod", listOf("GET", "POST"), if (d.httpMethod == "POST") 1 else 0))
+                    paramsBox.addView(input("url", "请求地址", d.url))
                 }
             }
         }
@@ -268,6 +278,16 @@ class AddEditTaskActivity : AppCompatActivity() {
         when (d.type) {
             ActionType.SWIPE, ActionType.LONG_PRESS, ActionType.DELAY ->
                 text("duration").toIntOrNull()?.let { d.duration = it.coerceAtLeast(0) }
+            ActionType.RANDOM_DELAY -> {
+                text("mindelay").toIntOrNull()?.let { d.minDelay = it.coerceAtLeast(0) }
+                text("maxdelay").toIntOrNull()?.let { d.maxDelay = it.coerceAtLeast(0) }
+            }
+            ActionType.HTTP_REQUEST -> {
+                (paramsBox.findViewWithTag("httpmethod") as? Spinner)?.let {
+                    d.httpMethod = if (it.selectedItemPosition == 1) "POST" else "GET"
+                }
+                d.url = text("url")
+            }
             ActionType.KEY_EVENT ->
                 (paramsBox.findViewWithTag("key") as? Spinner)?.let { d.keyAction = KeyAction.values()[it.selectedItemPosition] }
             ActionType.OPEN_URL -> d.url = text("url")
@@ -400,6 +420,22 @@ class AddEditTaskActivity : AppCompatActivity() {
     }
 
     // ==================== 保存 ====================
+
+    private fun testRun() {
+        if (actions.isEmpty()) {
+            Toast.makeText(this, "请至少添加一个动作", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val task = Task(
+            id = -1, name = "测试", hour = 0, minute = 0, second = 0,
+            repeat = RepeatMode.DAILY, enabled = true, actions = actions.toList()
+        )
+        Toast.makeText(this, "正在执行测试…", Toast.LENGTH_SHORT).show()
+        Thread {
+            TaskExecutor.execute(this, task)
+            runOnUiThread { Toast.makeText(this, "测试执行完成", Toast.LENGTH_SHORT).show() }
+        }.start()
+    }
 
     private fun save() {
         val name = nameInput.text.toString().trim().ifBlank { "任务" }

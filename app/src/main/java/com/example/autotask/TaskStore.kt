@@ -139,6 +139,8 @@ object TaskStore {
         put("volume", a.volume)
         put("varName", a.varName); put("varValue", a.varValue)
         put("condition", a.condition)
+        put("minDelay", a.minDelay); put("maxDelay", a.maxDelay)
+        put("httpMethod", a.httpMethod)
     }
 
     private fun actionFromJson(o: JSONObject): Action = Action(
@@ -153,6 +155,8 @@ object TaskStore {
         volumeStream = runCatching { VolumeStream.valueOf(o.optString("volumeStream", VolumeStream.MEDIA.name)) }.getOrDefault(VolumeStream.MEDIA),
         volume = o.optInt("volume", 50),
         varName = o.optString("varName", ""), varValue = o.optString("varValue", ""),
-        condition = o.optString("condition", "screen_on")
+        condition = o.optString("condition", "screen_on"),
+        minDelay = o.optInt("minDelay", 1000), maxDelay = o.optInt("maxDelay", 3000),
+        httpMethod = o.optString("httpMethod", "GET")
     )
 }

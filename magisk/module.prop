@@ -1,6 +1,6 @@
 id=autotask
 name=AutoTask 增强模块
-version=v0.0.5
-versionCode=5
+version=v0.0.6
+versionCode=6
 author=yao140514
 description=定时执行点击/滑动/长按/按键/开应用/链接/锁屏，支持自动解锁锁屏。配置: /data/adb/modules/autotask/tasks.conf
