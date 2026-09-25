@@ -1,6 +1,7 @@
 package com.example.autotask
 
 import android.app.AlarmManager
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -90,6 +91,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refresh()
         updateStatus()
+        checkAndPromptEnhancedModule()
     }
 
     override fun onDestroy() {
@@ -193,6 +195,39 @@ class MainActivity : AppCompatActivity() {
             return
         }
         toast("权限全部就绪 ✅")
+    }
+
+    /** 检测到 Root 且未安装增强模块时，提示下载 */
+    private fun checkAndPromptEnhancedModule() {
+        if (!Shell.getShell().isRoot) return
+        val prefs = getSharedPreferences("module_prompt", MODE_PRIVATE)
+        if (prefs.getBoolean("prompted", false)) return
+        if (isEnhancedModuleInstalled()) return
+        prefs.edit().putBoolean("prompted", true).apply()
+        AlertDialog.Builder(this)
+            .setTitle("检测到 Root 环境")
+            .setMessage("建议安装「增强模块」（Magisk 模块），可获得应用无法实现的能力：\n" +
+                    "• 自动解锁锁屏（输入 PIN）\n" +
+                    "• 更稳定的后台定时执行\n\n" +
+                    "是否前往下载？")
+            .setPositiveButton("去下载") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/yao140514/AutoTask/releases")))
+                } catch (_: Exception) {
+                }
+            }
+            .setNegativeButton("暂不", null)
+            .show()
+    }
+
+    /** 检查增强模块是否已安装 */
+    private fun isEnhancedModuleInstalled(): Boolean {
+        return try {
+            val r = Shell.cmd("test -f /data/adb/modules/autotask/module.prop && echo installed").exec()
+            r.out.any { it.contains("installed") }
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
