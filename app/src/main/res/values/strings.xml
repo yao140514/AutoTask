@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">定时任务</string>
+    <string name="accessibility_service_label">定时任务（无障碍模式）</string>
+    <string name="accessibility_service_description">用于在免 Root 情况下执行点击、滑动、长按、锁屏等定时任务。</string>
+
+    <string-array name="task_types">
+        <item>点击坐标</item>
+        <item>滑动</item>
+        <item>长按</item>
+        <item>打开应用</item>
+        <item>打开链接</item>
+        <item>模拟按键</item>
+        <item>锁屏</item>
+        <item>通知提醒</item>
+    </string-array>
+
+    <string-array name="key_actions">
+        <item>主页键</item>
+        <item>返回键</item>
+        <item>最近任务</item>
+        <item>电源/锁屏</item>
+        <item>音量 +</item>
+        <item>音量 -</item>
+        <item>播放/暂停</item>
+    </string-array>
+
+    <string-array name="backends">
+        <item>Root（推荐）</item>
+        <item>Shizuku</item>
+        <item>无障碍</item>
+    </string-array>
+
+    <string-array name="repeat_modes">
+        <item>每天</item>
+        <item>仅一次</item>
+        <item>每周（可选星期几）</item>
+    </string-array>
 </resources>

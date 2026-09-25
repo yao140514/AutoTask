@@ -12,8 +12,11 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageButton
+import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -24,13 +27,20 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.topjohnwu.superuser.Shell
+import rikka.shizuku.Shizuku
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recycler: RecyclerView
     private lateinit var statusText: TextView
     private lateinit var serviceSwitch: Switch
+    private lateinit var backendSpinner: Spinner
     private lateinit var adapter: TaskAdapter
+
+    private val shizukuListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
+        toast(if (grantResult == PackageManager.PERMISSION_GRANTED) "Shizuku 授权成功 ✅" else "Shizuku 授权被拒绝")
+        updateStatus()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         recycler = findViewById(R.id.recycler)
         statusText = findViewById(R.id.statusText)
         serviceSwitch = findViewById(R.id.serviceSwitch)
+        backendSpinner = findViewById(R.id.backendSpinner)
         val fab = findViewById<FloatingActionButton>(R.id.fab)
         val btnPermissions = findViewById<Button>(R.id.btnPermissions)
 
@@ -46,20 +57,32 @@ class MainActivity : AppCompatActivity() {
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
-        fab.setOnClickListener {
-            startActivity(Intent(this, AddEditTaskActivity::class.java))
+        // 执行方式选择
+        val backendAdapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item,
+            resources.getStringArray(R.array.backends)
+        )
+        backendAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        backendSpinner.adapter = backendAdapter
+        backendSpinner.setSelection(AppSettings.getBackend(this).ordinal)
+        backendSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                AppSettings.setBackend(this@MainActivity, Backend.values()[position])
+                updateStatus()
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
+
+        fab.setOnClickListener { startActivity(Intent(this, AddEditTaskActivity::class.java)) }
         btnPermissions.setOnClickListener { checkPermissions() }
 
-        // 前台服务开关
         serviceSwitch.isChecked = true
         serviceSwitch.setOnCheckedChangeListener { _, checked ->
             if (checked) TaskService.start(this) else TaskService.stop(this)
         }
 
-        // 启动前台服务
         TaskService.start(this)
-        // 首次启动自动检查一次权限（非强制）
+        Shizuku.addRequestPermissionResultListener(shizukuListener)
         checkPermissions()
     }
 
@@ -69,32 +92,80 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
     }
 
+    override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuListener)
+        super.onDestroy()
+    }
+
     private fun refresh() {
         adapter.submit(TaskStore.getAll(this))
     }
 
     private fun updateStatus() {
         val root = Shell.getShell().isRoot
+        val shizukuRunning = Shizuku.pingBinder()
+        val shizukuGranted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        val accessibility = isAccessibilityEnabled()
         val overlay = Settings.canDrawOverlays(this)
         val battery = (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .isIgnoringBatteryOptimizations(packageName)
         val exact = if (Build.VERSION.SDK_INT >= 31) {
             (getSystemService(Context.ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
         } else true
+
         statusText.text = buildString {
-            append("Root：").append(if (root) "✅ 已授权" else "❌ 未授权").append('\n')
+            append("执行方式：").append(AppSettings.getBackend(this@MainActivity).let {
+                when (it) {
+                    Backend.ROOT -> "Root"
+                    Backend.SHIZUKU -> "Shizuku"
+                    Backend.ACCESSIBILITY -> "无障碍"
+                }
+            }).append('\n')
+            append("Root：").append(if (root) "✅" else "❌").append('\n')
+            append("Shizuku：").append(if (shizukuRunning && shizukuGranted) "✅" else if (shizukuRunning) "⚠️ 未授权" else "❌ 未运行").append('\n')
+            append("无障碍：").append(if (accessibility) "✅" else "❌").append('\n')
             append("悬浮窗：").append(if (overlay) "✅" else "❌").append('\n')
             append("忽略省电：").append(if (battery) "✅" else "❌").append('\n')
             append("精确闹钟：").append(if (exact) "✅" else "❌")
         }
     }
 
-    /** 逐个检查并跳转到缺失权限的设置页 */
+    private fun isAccessibilityEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabled.contains("$packageName/${AutoAccessibilityService::class.java.name}")
+    }
+
+    /** 按所选后端 + 通用权限逐项检查 */
     private fun checkPermissions() {
-        if (!Shell.getShell().isRoot) {
-            toast("请在 Magisk 中为本应用授予 Root 权限")
-            return
+        val backend = AppSettings.getBackend(this)
+
+        // 1. 后端特定权限
+        when (backend) {
+            Backend.ROOT -> if (!Shell.getShell().isRoot) {
+                toast("请在 Magisk 中为本应用授予 Root 权限")
+                return
+            }
+            Backend.SHIZUKU -> {
+                if (!Shizuku.pingBinder()) {
+                    toast("Shizuku 未运行，请先启动 Shizuku App")
+                    return
+                }
+                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+                    toast("请求 Shizuku 授权中…")
+                    Shizuku.requestPermission(1001)
+                    return
+                }
+            }
+            Backend.ACCESSIBILITY -> if (!isAccessibilityEnabled()) {
+                toast("请在无障碍设置里开启「定时任务（无障碍模式）」")
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                return
+            }
         }
+
+        // 2. 通用权限
         if (!Settings.canDrawOverlays(this)) {
             toast("请授予悬浮窗权限（用于屏幕取点）")
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -148,7 +219,7 @@ class MainActivity : AppCompatActivity() {
             private val delete: ImageButton = v.findViewById(R.id.btnDelete)
 
             fun bind(task: Task) {
-                title.text = task.name
+                title.text = "${task.name}（${task.repeatText}）"
                 subtitle.text = "${task.timeText}　${task.typeText}\n下次：${TaskScheduler.nextTriggerText(task)}"
 
                 switch.setOnCheckedChangeListener(null)

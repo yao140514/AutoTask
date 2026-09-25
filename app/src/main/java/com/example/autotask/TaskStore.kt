@@ -73,7 +73,14 @@ object TaskStore {
         put("enabled", t.enabled)
         put("x", t.x)
         put("y", t.y)
+        put("x2", t.x2)
+        put("y2", t.y2)
+        put("duration", t.duration)
+        put("keyAction", t.keyAction.name)
         put("packageName", t.packageName)
+        put("url", t.url)
+        put("message", t.message)
+        put("weekdays", t.weekdays)
         put("wakeScreen", t.wakeScreen)
     }
 
@@ -88,7 +95,14 @@ object TaskStore {
         enabled = o.optBoolean("enabled", true),
         x = o.optInt("x", 0),
         y = o.optInt("y", 0),
+        x2 = o.optInt("x2", 0),
+        y2 = o.optInt("y2", 0),
+        duration = o.optInt("duration", 500),
+        keyAction = runCatching { KeyAction.valueOf(o.optString("keyAction", KeyAction.HOME.name)) }.getOrDefault(KeyAction.HOME),
         packageName = o.optString("packageName", ""),
+        url = o.optString("url", ""),
+        message = o.optString("message", ""),
+        weekdays = o.optInt("weekdays", 0),
         wakeScreen = o.optBoolean("wakeScreen", true)
     )
 }

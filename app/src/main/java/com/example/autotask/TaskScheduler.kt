@@ -14,12 +14,11 @@ object TaskScheduler {
         cancel(c, task.id)
         if (!task.enabled) return
         val trigger = nextTrigger(task)
+        if (trigger <= 0) return
         val pi = pendingIntent(c, task.id)
         try {
-            // 即使休眠/省电模式也精确触发
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pi)
         } catch (e: SecurityException) {
-            // 没精确闹钟权限时降级
             am.set(AlarmManager.RTC_WAKEUP, trigger, pi)
         }
     }
@@ -33,10 +32,30 @@ object TaskScheduler {
         TaskStore.getAll(c).forEach { schedule(c, it) }
     }
 
-    /** 计算下一次触发时间戳（毫秒） */
+    /** 计算下一次触发时间戳（毫秒）；返回 <=0 表示无法安排 */
     fun nextTrigger(task: Task, from: Long = System.currentTimeMillis()): Long {
         val cal = Calendar.getInstance()
         cal.timeInMillis = from
+
+        if (task.repeat == RepeatMode.WEEKLY) {
+            for (i in 0..7) {
+                val dow = cal.get(Calendar.DAY_OF_WEEK)
+                if (task.isWeekdaySelected(dow)) {
+                    val candidate = Calendar.getInstance().apply {
+                        timeInMillis = cal.timeInMillis
+                        set(Calendar.HOUR_OF_DAY, task.hour)
+                        set(Calendar.MINUTE, task.minute)
+                        set(Calendar.SECOND, task.second)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                    if (candidate > from) return candidate
+                }
+                cal.add(Calendar.DAY_OF_YEAR, 1)
+            }
+            return 0
+        }
+
+        // DAILY / ONCE
         cal.set(Calendar.HOUR_OF_DAY, task.hour)
         cal.set(Calendar.MINUTE, task.minute)
         cal.set(Calendar.SECOND, task.second)
@@ -45,14 +64,24 @@ object TaskScheduler {
         return cal.timeInMillis
     }
 
-    /** 下一次触发的友好描述，例如「今天 08:30:00」 */
     fun nextTriggerText(task: Task): String {
         val t = nextTrigger(task)
+        if (t <= 0) return "无"
         val cal = Calendar.getInstance().apply { timeInMillis = t }
         val now = Calendar.getInstance()
         val sameDay = cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
                 cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
-        val day = if (sameDay) "今天" else "明天"
+        val tomorrow = cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR) + 1
+
+        val day = when {
+            sameDay -> "今天"
+            tomorrow -> "明天"
+            else -> {
+                val week = arrayOf("日", "一", "二", "三", "四", "五", "六")
+                "${cal.get(Calendar.MONTH) + 1}月${cal.get(Calendar.DAY_OF_MONTH)}日(周${week[cal.get(Calendar.DAY_OF_WEEK) - 1]})"
+            }
+        }
         return "$day ${cal.get(Calendar.HOUR_OF_DAY)}:" +
                 String.format("%02d", cal.get(Calendar.MINUTE)) + ":" +
                 String.format("%02d", cal.get(Calendar.SECOND))
@@ -61,7 +90,6 @@ object TaskScheduler {
     private fun pendingIntent(c: Context, id: Int): PendingIntent {
         val i = Intent(c, AlarmReceiver::class.java)
         i.putExtra("taskId", id)
-        // 用 data 保证不同 id 的 Intent 互不相同
         i.data = Uri.parse("task://$id")
         return PendingIntent.getBroadcast(
             c, id, i,

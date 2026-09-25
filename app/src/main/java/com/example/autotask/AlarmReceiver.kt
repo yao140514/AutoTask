@@ -16,9 +16,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 val id = intent.getIntExtra("taskId", -1)
                 val task = TaskStore.get(context, id)
                 if (task != null && task.enabled) {
-                    TaskExecutor.execute(task)
+                    TaskExecutor.execute(context, task)
                     when (task.repeat) {
-                        RepeatMode.DAILY -> TaskScheduler.schedule(context, task)
+                        RepeatMode.DAILY, RepeatMode.WEEKLY -> TaskScheduler.schedule(context, task)
                         RepeatMode.ONCE -> {
                             task.enabled = false
                             TaskStore.update(context, task)

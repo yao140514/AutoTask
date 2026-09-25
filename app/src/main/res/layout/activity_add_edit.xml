@@ -47,34 +47,12 @@
             android:text="任务类型"
             android:textSize="14sp" />
 
-        <RadioGroup
-            android:id="@+id/typeGroup"
+        <Spinner
+            android:id="@+id/typeSpinner"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content" />
 
-            <RadioButton
-                android:id="@+id/radioClick"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="点击坐标" />
-
-            <RadioButton
-                android:id="@+id/radioApp"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="打开应用" />
-
-            <RadioButton
-                android:id="@+id/radioLock"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="锁屏" />
-        </RadioGroup>
-
+        <!-- 点击坐标 -->
         <LinearLayout
             android:id="@+id/clickSection"
             android:layout_width="match_parent"
@@ -99,6 +77,104 @@
                 android:text="屏幕上取点（悬浮窗）" />
         </LinearLayout>
 
+        <!-- 滑动 -->
+        <LinearLayout
+            android:id="@+id/swipeSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/tvSwipeStart"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:background="@drawable/bg_status"
+                android:text="起点: 0,0"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnPickStart"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="取起点" />
+
+            <TextView
+                android:id="@+id/tvSwipeEnd"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:padding="10dp"
+                android:background="@drawable/bg_status"
+                android:text="终点: 0,0"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnPickEnd"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="取终点" />
+
+            <EditText
+                android:id="@+id/etSwipeDuration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:hint="滑动时长（毫秒），默认 500"
+                android:inputType="number" />
+        </LinearLayout>
+
+        <!-- 长按 -->
+        <LinearLayout
+            android:id="@+id/longPressSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/tvLongCoord"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:background="@drawable/bg_status"
+                android:text="X: 0　Y: 0"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/btnPickLong"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="屏幕上取点（悬浮窗）" />
+
+            <EditText
+                android:id="@+id/etLongDuration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:hint="长按时长（毫秒），默认 800"
+                android:inputType="number" />
+        </LinearLayout>
+
+        <!-- 模拟按键 -->
+        <LinearLayout
+            android:id="@+id/keyEventSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <Spinner
+                android:id="@+id/keyActionSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- 打开应用 -->
         <LinearLayout
             android:id="@+id/appSection"
             android:layout_width="match_parent"
@@ -123,6 +199,49 @@
                 android:text="选择应用" />
         </LinearLayout>
 
+        <!-- 打开链接 -->
+        <LinearLayout
+            android:id="@+id/urlSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <EditText
+                android:id="@+id/etUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="https://example.com"
+                android:inputType="textUri" />
+        </LinearLayout>
+
+        <!-- 通知提醒 -->
+        <LinearLayout
+            android:id="@+id/notifySection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <EditText
+                android:id="@+id/etMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="提醒内容"
+                android:inputType="text" />
+        </LinearLayout>
+
+        <!-- 锁屏：无参数，仅提示 -->
+        <TextView
+            android:id="@+id/lockSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:padding="10dp"
+            android:background="@drawable/bg_status"
+            android:text="锁屏任务：到点自动熄灭屏幕（无需参数）"
+            android:textSize="14sp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -130,33 +249,33 @@
             android:text="重复方式"
             android:textSize="14sp" />
 
-        <RadioGroup
-            android:id="@+id/repeatGroup"
+        <Spinner
+            android:id="@+id/repeatSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <LinearLayout
+            android:id="@+id/weeklySection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:orientation="horizontal">
 
-            <RadioButton
-                android:id="@+id/radioDaily"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="每天" />
-
-            <RadioButton
-                android:id="@+id/radioOnce"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="仅一次" />
-        </RadioGroup>
+            <CheckBox android:id="@+id/cbMon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="一" />
+            <CheckBox android:id="@+id/cbTue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="二" />
+            <CheckBox android:id="@+id/cbWed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="三" />
+            <CheckBox android:id="@+id/cbThu" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="四" />
+            <CheckBox android:id="@+id/cbFri" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="五" />
+            <CheckBox android:id="@+id/cbSat" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="六" />
+            <CheckBox android:id="@+id/cbSun" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="日" />
+        </LinearLayout>
 
         <Switch
             android:id="@+id/switchWake"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="执行前唤醒屏幕（点击 / 打开应用时）" />
+            android:text="执行前唤醒屏幕（点击 / 滑动 / 长按 / 打开应用时）" />
 
         <Button
             android:id="@+id/btnSave"
