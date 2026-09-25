@@ -103,8 +103,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateStatus() {
         val root = Shell.getShell().isRoot
-        val shizukuRunning = Shizuku.pingBinder()
-        val shizukuGranted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        val shizukuRunning = ShizukuUtil.isRunning()
+        val shizukuGranted = ShizukuUtil.isPermissionGranted()
         val accessibility = isAccessibilityEnabled()
         val overlay = Settings.canDrawOverlays(this)
         val battery = (getSystemService(Context.POWER_SERVICE) as PowerManager)
@@ -148,13 +148,13 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             Backend.SHIZUKU -> {
-                if (!Shizuku.pingBinder()) {
+                if (!ShizukuUtil.isRunning()) {
                     toast("Shizuku 未运行，请先启动 Shizuku App")
                     return
                 }
-                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+                if (!ShizukuUtil.isPermissionGranted()) {
                     toast("请求 Shizuku 授权中…")
-                    Shizuku.requestPermission(1001)
+                    ShizukuUtil.requestPermission(1001)
                     return
                 }
             }

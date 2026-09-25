@@ -188,7 +188,7 @@ object TaskExecutor {
     // ==================== Shizuku 执行 ====================
 
     private fun shizuku(cmd: String): Boolean {
-        if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) return false
+        if (!ShizukuUtil.isPermissionGranted()) return false
         return try {
             val p = Shizuku.newProcess(arrayOf("sh", "-c", cmd), null, null)
             p.inputStream.bufferedReader().readText()
@@ -201,7 +201,7 @@ object TaskExecutor {
     }
 
     private fun shizukuOut(cmd: String): List<String> {
-        if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) return emptyList()
+        if (!ShizukuUtil.isPermissionGranted()) return emptyList()
         val out = mutableListOf<String>()
         try {
             val p = Shizuku.newProcess(arrayOf("sh", "-c", cmd), null, null)
