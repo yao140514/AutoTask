@@ -243,7 +243,7 @@ class MainActivity : AppCompatActivity() {
             .setMessage("类型：${release.typeLabel}\n${release.name}\n\n是否前往下载？")
             .setPositiveButton("下载更新") { _, _ ->
                 try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.REPO_RELEASES_URL)))
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.releaseTagUrl(release.version))))
                 } catch (_: Exception) {
                 }
             }

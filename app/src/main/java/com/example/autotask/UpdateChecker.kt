@@ -13,6 +13,10 @@ object UpdateChecker {
     const val REPO_RELEASES_URL = "https://github.com/yao140514/AutoTask/releases/"
     private const val API_URL = "https://api.github.com/repos/yao140514/AutoTask/releases"
 
+    /** 某个版本的 Release 页面链接（版本动态拼接） */
+    fun releaseTagUrl(version: String): String =
+        "https://github.com/yao140514/AutoTask/releases/tag/v$version"
+
     data class Release(
         val version: String,     // 去掉前缀 v 的版本号，如 "0.0.4"
         val name: String,
