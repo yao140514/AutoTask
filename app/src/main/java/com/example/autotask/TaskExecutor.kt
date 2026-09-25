@@ -6,60 +6,93 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
+import android.os.BatteryManager
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.topjohnwu.superuser.Shell
 import rikka.shizuku.Shizuku
 
 /**
- * 任务执行器：根据所选后端（Root / Shizuku / 无障碍）执行任务。
+ * 任务执行器：按顺序执行一个任务内的多个动作，支持三种后端（Root / Shizuku / 无障碍）。
  */
 object TaskExecutor {
 
     fun execute(context: Context, task: Task) {
         val backend = AppSettings.getBackend(context)
-        when (task.type) {
-            TaskType.CLICK -> {
-                if (task.wakeScreen) wakeIfNeeded(backend)
-                tap(backend, task.x, task.y)
+        val vars = HashMap<String, String>()
+        var skipNext = false
+        for (action in task.actions) {
+            if (skipNext) {
+                skipNext = false
+                continue
             }
-            TaskType.SWIPE -> {
-                if (task.wakeScreen) wakeIfNeeded(backend)
-                swipe(backend, task.x, task.y, task.x2, task.y2, task.duration)
+            if (action.type == ActionType.CONDITION) {
+                if (!evalCondition(context, action, vars)) skipNext = true
+            } else {
+                executeAction(context, backend, action, vars)
             }
-            TaskType.LONG_PRESS -> {
-                if (task.wakeScreen) wakeIfNeeded(backend)
-                longPress(backend, task.x, task.y, task.duration)
-            }
-            TaskType.KEY_EVENT -> keyEvent(backend, task.keyAction)
-            TaskType.LOCK_SCREEN -> lock(backend)
-            TaskType.OPEN_APP -> openApp(backend, context, task.packageName)
-            TaskType.OPEN_URL -> openUrl(context, task.url)
-            TaskType.NOTIFY -> notify(context, task.message)
+        }
+    }
+
+    private fun executeAction(context: Context, backend: Backend, a: Action, vars: HashMap<String, String>) {
+        when (a.type) {
+            ActionType.CLICK -> { wakeIfNeeded(backend, context); tap(backend, a.x, a.y) }
+            ActionType.SWIPE -> { wakeIfNeeded(backend, context); swipe(backend, a.x, a.y, a.x2, a.y2, a.duration) }
+            ActionType.LONG_PRESS -> { wakeIfNeeded(backend, context); longPress(backend, a.x, a.y, a.duration) }
+            ActionType.KEY_EVENT -> keyEvent(backend, a.keyAction)
+            ActionType.LOCK_SCREEN -> lock(backend, context)
+            ActionType.OPEN_APP -> openApp(backend, context, a.packageName)
+            ActionType.OPEN_URL -> openUrl(context, a.url)
+            ActionType.NOTIFY -> notify(context, a.message)
+            ActionType.SHELL -> shell(backend, substitute(a.shellCmd, vars))
+            ActionType.VOLUME -> setVolume(backend, context, a.volumeStream, a.volume)
+            ActionType.DELAY -> Thread.sleep(a.duration.coerceAtLeast(0).toLong())
+            ActionType.SET_VAR -> vars[a.varName] = a.varValue
+            ActionType.CONDITION -> {} // 已在 execute 中处理
         }
     }
 
     // ==================== 通用 ====================
 
-    private fun isScreenOn(backend: Backend): Boolean {
-        val out: List<String> = when (backend) {
-            Backend.ROOT -> Shell.cmd("dumpsys power").exec().out
-            Backend.SHIZUKU -> shizukuOut("dumpsys power")
-            Backend.ACCESSIBILITY -> return true
-        }
-        val line = out.firstOrNull { it.contains("mWakefulness=") }
-        return line?.contains("Awake") == true
-    }
+    private fun isScreenOn(context: Context): Boolean =
+        (context.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
 
-    private fun wakeIfNeeded(backend: Backend) {
-        if (backend == Backend.ACCESSIBILITY) return // 无障碍模式无法直接唤醒
-        if (isScreenOn(backend)) return
+    private fun batteryLevel(context: Context): Int =
+        (context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
+            .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+
+    private fun wakeIfNeeded(backend: Backend, context: Context) {
+        if (backend == Backend.ACCESSIBILITY) return
+        if (isScreenOn(context)) return
         when (backend) {
             Backend.ROOT -> Shell.cmd("input keyevent 224", "input keyevent 82", "wm dismiss-keyguard").exec()
             Backend.SHIZUKU -> shizuku("input keyevent 224; input keyevent 82; wm dismiss-keyguard")
             else -> {}
         }
         Thread.sleep(400)
+    }
+
+    private fun substitute(s: String, vars: Map<String, String>): String {
+        var r = s
+        for ((k, v) in vars) r = r.replace("\${$k}", v)
+        return r
+    }
+
+    // ==================== 条件 ====================
+
+    private fun evalCondition(context: Context, a: Action, vars: Map<String, String>): Boolean {
+        val c = substitute(a.condition, vars)
+        return when {
+            c == "screen_on" -> isScreenOn(context)
+            c == "screen_off" -> !isScreenOn(context)
+            c.startsWith("battery>") -> {
+                val threshold = c.removePrefix("battery>").toIntOrNull() ?: 0
+                batteryLevel(context) > threshold
+            }
+            else -> false
+        }
     }
 
     // ==================== 点击 / 滑动 / 长按 ====================
@@ -101,7 +134,7 @@ object TaskExecutor {
                     KeyAction.BACK -> AccessibilityService.GLOBAL_ACTION_BACK
                     KeyAction.RECENT -> AccessibilityService.GLOBAL_ACTION_RECENTS
                     KeyAction.POWER -> AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
-                    else -> return // 无障碍不支持音量/播放键
+                    else -> return
                 }
                 svc.performGlobalAction(g)
             }
@@ -110,16 +143,16 @@ object TaskExecutor {
 
     // ==================== 锁屏 ====================
 
-    private fun lock(backend: Backend) {
+    private fun lock(backend: Backend, context: Context) {
         when (backend) {
-            Backend.ROOT -> if (isScreenOn(Backend.ROOT)) Shell.cmd("input keyevent 26").exec()
-            Backend.SHIZUKU -> if (isScreenOn(Backend.SHIZUKU)) shizuku("input keyevent 26")
+            Backend.ROOT -> if (isScreenOn(context)) Shell.cmd("input keyevent 26").exec()
+            Backend.SHIZUKU -> if (isScreenOn(context)) shizuku("input keyevent 26")
             Backend.ACCESSIBILITY ->
                 AutoAccessibilityService.instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
         }
     }
 
-    // ==================== 打开应用 ====================
+    // ==================== 打开应用 / 链接 ====================
 
     private fun openApp(backend: Backend, context: Context, pkg: String) {
         if (pkg.isBlank()) return
@@ -131,9 +164,7 @@ object TaskExecutor {
                 val ok = if (activity.isNotBlank() && !activity.lowercase().startsWith("error")) {
                     val start = "am start -n $activity"
                     if (backend == Backend.ROOT) Shell.cmd(start).exec().isSuccess else shizuku(start)
-                } else {
-                    false
-                }
+                } else false
                 if (!ok) {
                     val m = "monkey -p $pkg -c android.intent.category.LAUNCHER 1"
                     if (backend == Backend.ROOT) Shell.cmd(m).exec() else shizuku(m)
@@ -150,8 +181,6 @@ object TaskExecutor {
             }
         }
     }
-
-    // ==================== 打开链接 ====================
 
     private fun openUrl(context: Context, url: String) {
         if (url.isBlank()) return
@@ -183,6 +212,36 @@ object TaskExecutor {
             .setContentIntent(pi)
             .build()
         nm.notify((System.currentTimeMillis() % 100000).toInt(), n)
+    }
+
+    // ==================== Shell 命令 ====================
+
+    private fun shell(backend: Backend, cmd: String) {
+        if (cmd.isBlank()) return
+        when (backend) {
+            Backend.ROOT -> Shell.cmd(cmd).exec()
+            Backend.SHIZUKU -> shizuku(cmd)
+            Backend.ACCESSIBILITY -> {} // 无障碍无 shell 能力
+        }
+    }
+
+    // ==================== 音量 ====================
+
+    private fun setVolume(backend: Backend, context: Context, stream: VolumeStream, volume: Int) {
+        when (backend) {
+            Backend.ROOT -> Shell.cmd("media volume --stream ${stream.streamCode} --set ${(volume * 15) / 100}").exec()
+            Backend.SHIZUKU -> shizuku("media volume --stream ${stream.streamCode} --set ${(volume * 15) / 100}")
+            Backend.ACCESSIBILITY -> {
+                try {
+                    val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    val max = am.getStreamMaxVolume(stream.streamCode)
+                    val v = (volume * max) / 100
+                    am.setStreamVolume(stream.streamCode, v, 0)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
     }
 
     // ==================== Shizuku 执行 ====================

@@ -17,11 +17,14 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * 悬浮窗取点：先在屏幕上点一下记录坐标，再弹出确认面板。
+ * 悬浮窗取点（优化版）：
+ * 1. 先显示一个悬浮按钮，用户点击按钮后才开始取点；
+ * 2. 点击屏幕记录坐标，弹出确认面板。
  */
 class CoordinatePickerService : Service() {
 
     private var wm: WindowManager? = null
+    private var startButton: View? = null
     private var touchView: View? = null
     private var panel: View? = null
 
@@ -39,7 +42,7 @@ class CoordinatePickerService : Service() {
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        showTouchCapture()
+        showStartButton()
     }
 
     private fun overlayType(): Int =
@@ -47,6 +50,38 @@ class CoordinatePickerService : Service() {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else
             WindowManager.LayoutParams.TYPE_PHONE
+
+    /** 悬浮按钮：点击后开始取点 */
+    private fun showStartButton() {
+        val btn = Button(this)
+        btn.text = "🔘 点我开始取点"
+        btn.setTextColor(Color.WHITE)
+        btn.background = GradientDrawable().apply {
+            setColor(Color.parseColor("#3F51B5"))
+            cornerRadius = dp(24).toFloat()
+        }
+        btn.setOnClickListener {
+            removeView(startButton)
+            startButton = null
+            showTouchCapture()
+        }
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        lp.y = dp(100)
+        try {
+            wm?.addView(btn, lp)
+            startButton = btn
+        } catch (e: Exception) {
+            e.printStackTrace()
+            stopSelf()
+        }
+    }
 
     /** 全屏透明触摸捕获层 */
     private fun showTouchCapture() {
@@ -78,12 +113,11 @@ class CoordinatePickerService : Service() {
     }
 
     private fun onTapped(x: Int, y: Int) {
-        touchView?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
+        removeView(touchView)
         touchView = null
         showConfirmPanel(x, y)
     }
 
-    /** 确认面板（可聚焦，按钮可点击） */
     private fun showConfirmPanel(x: Int, y: Int) {
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
@@ -144,11 +178,14 @@ class CoordinatePickerService : Service() {
         }
     }
 
+    private fun removeView(v: View?) {
+        v?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
+    }
+
     private fun cleanup() {
-        panel?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
-        panel = null
-        touchView?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
-        touchView = null
+        removeView(panel); panel = null
+        removeView(touchView); touchView = null
+        removeView(startButton); startButton = null
         onPick = null
         stopSelf()
     }

@@ -30,7 +30,7 @@ object TaskStore {
         val list = mutableListOf<Task>()
         for (i in 0 until arr.length()) {
             try {
-                list.add(fromJson(arr.getJSONObject(i)))
+                list.add(taskFromJson(arr.getJSONObject(i)))
             } catch (_: Exception) {
             }
         }
@@ -56,53 +56,103 @@ object TaskStore {
         save(c, getAll(c).filter { it.id != id })
     }
 
+    // ===== 备份 / 恢复 =====
+
+    fun exportJson(c: Context): String {
+        val arr = JSONArray()
+        getAll(c).forEach { arr.put(taskToJson(it)) }
+        return arr.toString()
+    }
+
+    fun importJson(c: Context, json: String): Int {
+        val arr = try {
+            JSONArray(json)
+        } catch (e: Exception) {
+            return 0
+        }
+        val list = getAll(c).toMutableList()
+        val existingIds = list.map { it.id }.toMutableSet()
+        var count = 0
+        for (i in 0 until arr.length()) {
+            try {
+                val t = taskFromJson(arr.getJSONObject(i))
+                // 保证 id 唯一
+                var id = t.id
+                while (id in existingIds) id = nextId(c)
+                existingIds.add(id)
+                list.add(t.copy(id = id))
+                count++
+            } catch (_: Exception) {
+            }
+        }
+        save(c, list)
+        return count
+    }
+
     private fun save(c: Context, list: List<Task>) {
         val arr = JSONArray()
-        list.forEach { arr.put(toJson(it)) }
+        list.forEach { arr.put(taskToJson(it)) }
         prefs(c).edit().putString(KEY, arr.toString()).apply()
     }
 
-    private fun toJson(t: Task): JSONObject = JSONObject().apply {
+    // ===== 序列化 =====
+
+    private fun taskToJson(t: Task): JSONObject = JSONObject().apply {
         put("id", t.id)
         put("name", t.name)
         put("hour", t.hour)
         put("minute", t.minute)
         put("second", t.second)
-        put("type", t.type.name)
         put("repeat", t.repeat.name)
         put("enabled", t.enabled)
-        put("x", t.x)
-        put("y", t.y)
-        put("x2", t.x2)
-        put("y2", t.y2)
-        put("duration", t.duration)
-        put("keyAction", t.keyAction.name)
-        put("packageName", t.packageName)
-        put("url", t.url)
-        put("message", t.message)
         put("weekdays", t.weekdays)
-        put("wakeScreen", t.wakeScreen)
+        put("actions", JSONArray().apply {
+            t.actions.forEach { put(actionToJson(it)) }
+        })
     }
 
-    private fun fromJson(o: JSONObject): Task = Task(
+    private fun taskFromJson(o: JSONObject): Task = Task(
         id = o.getInt("id"),
         name = o.optString("name", "任务"),
         hour = o.getInt("hour"),
         minute = o.getInt("minute"),
         second = o.optInt("second", 0),
-        type = TaskType.valueOf(o.getString("type")),
         repeat = RepeatMode.valueOf(o.optString("repeat", RepeatMode.DAILY.name)),
         enabled = o.optBoolean("enabled", true),
-        x = o.optInt("x", 0),
-        y = o.optInt("y", 0),
-        x2 = o.optInt("x2", 0),
-        y2 = o.optInt("y2", 0),
+        weekdays = o.optInt("weekdays", 0),
+        actions = runCatching {
+            val arr = o.getJSONArray("actions")
+            (0 until arr.length()).map { actionFromJson(arr.getJSONObject(it)) }
+        }.getOrDefault(emptyList())
+    )
+
+    private fun actionToJson(a: Action): JSONObject = JSONObject().apply {
+        put("type", a.type.name)
+        put("x", a.x); put("y", a.y)
+        put("x2", a.x2); put("y2", a.y2)
+        put("duration", a.duration)
+        put("keyAction", a.keyAction.name)
+        put("packageName", a.packageName)
+        put("url", a.url); put("message", a.message)
+        put("shellCmd", a.shellCmd)
+        put("volumeStream", a.volumeStream.name)
+        put("volume", a.volume)
+        put("varName", a.varName); put("varValue", a.varValue)
+        put("condition", a.condition)
+    }
+
+    private fun actionFromJson(o: JSONObject): Action = Action(
+        type = runCatching { ActionType.valueOf(o.getString("type")) }.getOrDefault(ActionType.CLICK),
+        x = o.optInt("x", 0), y = o.optInt("y", 0),
+        x2 = o.optInt("x2", 0), y2 = o.optInt("y2", 0),
         duration = o.optInt("duration", 500),
         keyAction = runCatching { KeyAction.valueOf(o.optString("keyAction", KeyAction.HOME.name)) }.getOrDefault(KeyAction.HOME),
         packageName = o.optString("packageName", ""),
-        url = o.optString("url", ""),
-        message = o.optString("message", ""),
-        weekdays = o.optInt("weekdays", 0),
-        wakeScreen = o.optBoolean("wakeScreen", true)
+        url = o.optString("url", ""), message = o.optString("message", ""),
+        shellCmd = o.optString("shellCmd", ""),
+        volumeStream = runCatching { VolumeStream.valueOf(o.optString("volumeStream", VolumeStream.MEDIA.name)) }.getOrDefault(VolumeStream.MEDIA),
+        volume = o.optInt("volume", 50),
+        varName = o.optString("varName", ""), varValue = o.optString("varValue", ""),
+        condition = o.optString("condition", "screen_on")
     )
 }

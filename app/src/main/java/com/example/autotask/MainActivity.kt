@@ -21,6 +21,7 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -38,9 +39,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var backendSpinner: Spinner
     private lateinit var adapter: TaskAdapter
 
+    private var updateChecked = false
+
     private val shizukuListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
         toast(if (grantResult == PackageManager.PERMISSION_GRANTED) "Shizuku 授权成功 ✅" else "Shizuku 授权被拒绝")
         updateStatus()
+    }
+
+    private val backupLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { writeBackup(it) }
+    }
+    private val restoreLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { readBackup(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,12 +63,14 @@ class MainActivity : AppCompatActivity() {
         backendSpinner = findViewById(R.id.backendSpinner)
         val fab = findViewById<FloatingActionButton>(R.id.fab)
         val btnPermissions = findViewById<Button>(R.id.btnPermissions)
+        val btnCheckUpdate = findViewById<Button>(R.id.btnCheckUpdate)
+        val btnBackup = findViewById<Button>(R.id.btnBackup)
+        val btnRestore = findViewById<Button>(R.id.btnRestore)
 
         adapter = TaskAdapter()
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
-        // 执行方式选择
         val backendAdapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_item,
             resources.getStringArray(R.array.backends)
@@ -76,6 +88,9 @@ class MainActivity : AppCompatActivity() {
 
         fab.setOnClickListener { startActivity(Intent(this, AddEditTaskActivity::class.java)) }
         btnPermissions.setOnClickListener { checkPermissions() }
+        btnCheckUpdate.setOnClickListener { checkForUpdate(manual = true) }
+        btnBackup.setOnClickListener { backupLauncher.launch("autotask_backup.json") }
+        btnRestore.setOnClickListener { restoreLauncher.launch(arrayOf("application/json")) }
 
         serviceSwitch.isChecked = true
         serviceSwitch.setOnCheckedChangeListener { _, checked ->
@@ -92,6 +107,10 @@ class MainActivity : AppCompatActivity() {
         refresh()
         updateStatus()
         checkAndPromptEnhancedModule()
+        if (!updateChecked) {
+            updateChecked = true
+            checkForUpdate(manual = false)
+        }
     }
 
     override fun onDestroy() {
@@ -116,15 +135,18 @@ class MainActivity : AppCompatActivity() {
         } else true
 
         statusText.text = buildString {
-            append("执行方式：").append(AppSettings.getBackend(this@MainActivity).let {
-                when (it) {
+            append("版本：v").append(BuildConfig.VERSION_NAME).append('\n')
+            append("执行方式：").append(
+                when (AppSettings.getBackend(this@MainActivity)) {
                     Backend.ROOT -> "Root"
                     Backend.SHIZUKU -> "Shizuku"
                     Backend.ACCESSIBILITY -> "无障碍"
                 }
-            }).append('\n')
+            ).append('\n')
             append("Root：").append(if (root) "✅" else "❌").append('\n')
-            append("Shizuku：").append(if (shizukuRunning && shizukuGranted) "✅" else if (shizukuRunning) "⚠️ 未授权" else "❌ 未运行").append('\n')
+            append("Shizuku：").append(
+                if (shizukuRunning && shizukuGranted) "✅" else if (shizukuRunning) "⚠️ 未授权" else "❌ 未运行"
+            ).append('\n')
             append("无障碍：").append(if (accessibility) "✅" else "❌").append('\n')
             append("悬浮窗：").append(if (overlay) "✅" else "❌").append('\n')
             append("忽略省电：").append(if (battery) "✅" else "❌").append('\n')
@@ -139,11 +161,8 @@ class MainActivity : AppCompatActivity() {
         return enabled.contains("$packageName/${AutoAccessibilityService::class.java.name}")
     }
 
-    /** 按所选后端 + 通用权限逐项检查 */
     private fun checkPermissions() {
         val backend = AppSettings.getBackend(this)
-
-        // 1. 后端特定权限
         when (backend) {
             Backend.ROOT -> if (!Shell.getShell().isRoot) {
                 toast("请在 Magisk 中为本应用授予 Root 权限")
@@ -167,7 +186,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 2. 通用权限
         if (!Settings.canDrawOverlays(this)) {
             toast("请授予悬浮窗权限（用于屏幕取点）")
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -175,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-            toast("请允许「忽略电池优化」，保证休眠下准点执行")
+            toast("请允许「忽略电池优化」")
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
             return
         }
@@ -197,7 +215,73 @@ class MainActivity : AppCompatActivity() {
         toast("权限全部就绪 ✅")
     }
 
-    /** 检测到 Root 且未安装增强模块时，提示下载 */
+    // ==================== 更新检测 ====================
+
+    private fun checkForUpdate(manual: Boolean) {
+        UpdateChecker.check { release ->
+            runOnUiThread {
+                if (release == null) {
+                    if (manual) toast("检查更新失败，请稍后重试")
+                    return@runOnUiThread
+                }
+                if (!UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME)) {
+                    if (manual) toast("已是最新版本 v${BuildConfig.VERSION_NAME}")
+                    return@runOnUiThread
+                }
+                val prefs = getSharedPreferences("update", MODE_PRIVATE)
+                if (prefs.getString("skip_version", "") == release.version) {
+                    return@runOnUiThread
+                }
+                showUpdateDialog(release)
+            }
+        }
+    }
+
+    private fun showUpdateDialog(release: UpdateChecker.Release) {
+        AlertDialog.Builder(this)
+            .setTitle("发现新版本 v${release.version}")
+            .setMessage("类型：${release.typeLabel}\n${release.name}\n\n是否前往下载？")
+            .setPositiveButton("下载更新") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.REPO_RELEASES_URL)))
+                } catch (_: Exception) {
+                }
+            }
+            .setNeutralButton("跳过该版本") { _, _ ->
+                getSharedPreferences("update", MODE_PRIVATE)
+                    .edit().putString("skip_version", release.version).apply()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    // ==================== 备份 / 恢复 ====================
+
+    private fun writeBackup(uri: Uri) {
+        try {
+            contentResolver.openOutputStream(uri)?.use { os ->
+                os.write(TaskStore.exportJson(this).toByteArray(Charsets.UTF_8))
+            }
+            toast("备份成功")
+        } catch (e: Exception) {
+            toast("备份失败：${e.message}")
+        }
+    }
+
+    private fun readBackup(uri: Uri) {
+        try {
+            val json = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: ""
+            val count = TaskStore.importJson(this, json)
+            toast("已导入 $count 个任务")
+            refresh()
+            TaskScheduler.rescheduleAll(this)
+        } catch (e: Exception) {
+            toast("恢复失败：${e.message}")
+        }
+    }
+
+    // ==================== 增强模块提示 ====================
+
     private fun checkAndPromptEnhancedModule() {
         if (!Shell.getShell().isRoot) return
         val prefs = getSharedPreferences("module_prompt", MODE_PRIVATE)
@@ -212,7 +296,7 @@ class MainActivity : AppCompatActivity() {
                     "是否前往下载？")
             .setPositiveButton("去下载") { _, _ ->
                 try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/yao140514/AutoTask/releases")))
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.REPO_RELEASES_URL)))
                 } catch (_: Exception) {
                 }
             }
@@ -220,7 +304,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 检查增强模块是否已安装 */
     private fun isEnhancedModuleInstalled(): Boolean {
         return try {
             val r = Shell.cmd("test -f /data/adb/modules/autotask/module.prop && echo installed").exec()
@@ -255,7 +338,7 @@ class MainActivity : AppCompatActivity() {
 
             fun bind(task: Task) {
                 title.text = "${task.name}（${task.repeatText}）"
-                subtitle.text = "${task.timeText}　${task.typeText}\n下次：${TaskScheduler.nextTriggerText(task)}"
+                subtitle.text = "${task.timeText}　${task.actionsSummary}\n下次：${TaskScheduler.nextTriggerText(task)}"
 
                 switch.setOnCheckedChangeListener(null)
                 switch.isChecked = task.enabled
