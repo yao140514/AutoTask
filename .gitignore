@@ -1,0 +1,25 @@
+# ===== Gradle / 编译产物 =====
+.gradle/
+build/
+app/build/
+captures/
+
+# ===== 本机配置（含绝对路径，勿提交）=====
+local.properties
+
+# ===== IDE =====
+.idea/
+*.iml
+.DS_Store
+
+# ===== Android 打包产物 =====
+*.apk
+*.aab
+
+# ===== 签名文件（绝对不要提交！）=====
+*.jks
+*.keystore
+keystore.properties
+
+# ===== 日志 =====
+*.log
