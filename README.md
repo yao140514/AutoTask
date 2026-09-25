@@ -67,13 +67,16 @@ AutoTask/
 3. 手机开启 USB 调试，连接电脑
 4. 点运行 ▶，或 `Build → Build APK(s)` 生成 APK
 
-**方式二：命令行**
+**方式二：命令行（已内置 Gradle Wrapper）**
 
 ```bash
 cd AutoTask
 ./gradlew assembleDebug          # 产物在 app/build/outputs/apk/debug/
-# 若没有 gradlew，可先执行：gradle wrapper
 ```
+
+> 首次运行 `./gradlew` 会自动下载 Gradle 8.2。项目已配置腾讯镜像加速；
+> 如在海外环境，可把 `gradle/wrapper/gradle-wrapper.properties` 里的
+> `distributionUrl` 改回 `https\://services.gradle.org/distributions/gradle-8.2-bin.zip`。
 
 > 生成的 APK 可直接安装，或复制到手机安装。
 
