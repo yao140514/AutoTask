@@ -49,6 +49,10 @@
             android:name=".AddEditTaskActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".TutorialActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".AlarmReceiver"
             android:exported="false" />

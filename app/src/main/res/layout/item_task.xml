@@ -5,7 +5,8 @@
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:padding="8dp"
-    android:background="?android:attr/selectableItemBackground">
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/bg_glass">
 
     <Switch
         android:id="@+id/switchEnabled"
@@ -25,6 +26,7 @@
             android:layout_height="wrap_content"
             android:textSize="16sp"
             android:textStyle="bold"
+            android:textColor="#FFFFFF"
             android:text="任务" />
 
         <TextView
@@ -32,9 +34,19 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="13sp"
-            android:textColor="#888888"
+            android:textColor="#CCFFFFFF"
             android:text="08:00:00" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/btnRun"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="0dp"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:text="运行"
+        android:textSize="12sp" />
 
     <ImageButton
         android:id="@+id/btnDelete"

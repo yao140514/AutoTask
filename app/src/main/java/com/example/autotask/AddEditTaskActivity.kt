@@ -122,7 +122,7 @@ class AddEditTaskActivity : AppCompatActivity() {
                 text = "${i + 1}. ${action.summary}"
                 textSize = 13f
                 setPadding(dp(8), dp(8), dp(8), dp(8))
-                background = getDrawable(R.drawable.bg_status)
+                background = getDrawable(R.drawable.bg_glass)
             }
             row.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
@@ -433,6 +433,7 @@ class AddEditTaskActivity : AppCompatActivity() {
         Toast.makeText(this, "正在执行测试…", Toast.LENGTH_SHORT).show()
         Thread {
             TaskExecutor.execute(this, task)
+            ExecutionLog.add(this, "测试执行")
             runOnUiThread { Toast.makeText(this, "测试执行完成", Toast.LENGTH_SHORT).show() }
         }.start()
     }

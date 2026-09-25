@@ -66,6 +66,9 @@ class MainActivity : AppCompatActivity() {
         val btnCheckUpdate = findViewById<Button>(R.id.btnCheckUpdate)
         val btnBackup = findViewById<Button>(R.id.btnBackup)
         val btnRestore = findViewById<Button>(R.id.btnRestore)
+        val btnModule = findViewById<Button>(R.id.btnModule)
+        val btnTutorial = findViewById<Button>(R.id.btnTutorial)
+        val btnLog = findViewById<Button>(R.id.btnLog)
 
         adapter = TaskAdapter()
         recycler.layoutManager = LinearLayoutManager(this)
@@ -91,6 +94,9 @@ class MainActivity : AppCompatActivity() {
         btnCheckUpdate.setOnClickListener { checkForUpdate(manual = true) }
         btnBackup.setOnClickListener { backupLauncher.launch("autotask_backup.json") }
         btnRestore.setOnClickListener { restoreLauncher.launch(arrayOf("application/json")) }
+        btnModule.setOnClickListener { promptModule() }
+        btnTutorial.setOnClickListener { startActivity(Intent(this, TutorialActivity::class.java)) }
+        btnLog.setOnClickListener { showLog() }
 
         serviceSwitch.isChecked = true
         serviceSwitch.setOnCheckedChangeListener { _, checked ->
@@ -148,6 +154,7 @@ class MainActivity : AppCompatActivity() {
                 if (shizukuRunning && shizukuGranted) "✅" else if (shizukuRunning) "⚠️ 未授权" else "❌ 未运行"
             ).append('\n')
             append("无障碍：").append(if (accessibility) "✅" else "❌").append('\n')
+            append("增强模块：").append(readModuleVersion()?.let { "已安装 v$it" } ?: "未安装").append('\n')
             append("悬浮窗：").append(if (overlay) "✅" else "❌").append('\n')
             append("忽略省电：").append(if (battery) "✅" else "❌").append('\n')
             append("精确闹钟：").append(if (exact) "✅" else "❌")
@@ -314,33 +321,63 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndPromptEnhancedModule() {
         if (!Shell.getShell().isRoot) return
+        if (readModuleVersion() != null) return
         val prefs = getSharedPreferences("module_prompt", MODE_PRIVATE)
         if (prefs.getBoolean("prompted", false)) return
-        if (isEnhancedModuleInstalled()) return
         prefs.edit().putBoolean("prompted", true).apply()
-        AlertDialog.Builder(this)
-            .setTitle("检测到 Root 环境")
-            .setMessage("建议安装「增强模块」（Magisk 模块），可获得应用无法实现的能力：\n" +
-                    "• 自动解锁锁屏（输入 PIN）\n" +
-                    "• 更稳定的后台定时执行\n\n" +
-                    "是否前往下载？")
-            .setPositiveButton("去下载") { _, _ ->
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.REPO_RELEASES_URL)))
-                } catch (_: Exception) {
-                }
-            }
-            .setNegativeButton("暂不", null)
-            .show()
+        promptModule()
     }
 
-    private fun isEnhancedModuleInstalled(): Boolean {
-        return try {
-            val r = Shell.cmd("test -f /data/adb/modules/autotask/module.prop && echo installed").exec()
-            r.out.any { it.contains("installed") }
-        } catch (e: Exception) {
-            false
+    /** 打开增强模块下载 / 状态对话框（主页「增强模块」按钮） */
+    private fun promptModule() {
+        if (!Shell.getShell().isRoot) {
+            toast("需要 Root 环境才能安装增强模块")
+            return
         }
+        val version = readModuleVersion()
+        if (version != null) {
+            AlertDialog.Builder(this)
+                .setTitle("增强模块")
+                .setMessage("已安装增强模块 v$version")
+                .setPositiveButton("知道了", null)
+                .show()
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("增强模块（未安装）")
+                .setMessage("增强模块（Magisk 模块）可提供：\n" +
+                        "• 自动解锁锁屏（输入 PIN）\n" +
+                        "• 更稳定的后台定时执行\n\n" +
+                        "是否前往下载？")
+                .setPositiveButton("去下载") { _, _ ->
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.REPO_RELEASES_URL)))
+                    } catch (_: Exception) {
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    /** 显示执行日志 */
+    private fun showLog() {
+        val log = ExecutionLog.get(this).ifBlank { "暂无执行记录" }
+        val scroll = android.widget.ScrollView(this)
+        scroll.addView(TextView(this).apply {
+            text = log
+            textSize = 13f
+            setPadding(24, 24, 24, 24)
+            setTextColor(0xFFFFFFFF.toInt())
+        })
+        AlertDialog.Builder(this)
+            .setTitle("执行日志")
+            .setView(scroll)
+            .setPositiveButton("关闭", null)
+            .setNeutralButton("清空") { _, _ ->
+                ExecutionLog.clear(this)
+                toast("日志已清空")
+            }
+            .show()
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -364,6 +401,7 @@ class MainActivity : AppCompatActivity() {
             private val title: TextView = v.findViewById(R.id.tvTitle)
             private val subtitle: TextView = v.findViewById(R.id.tvSubtitle)
             private val switch: Switch = v.findViewById(R.id.switchEnabled)
+            private val run: Button = v.findViewById(R.id.btnRun)
             private val delete: ImageButton = v.findViewById(R.id.btnDelete)
 
             fun bind(task: Task) {
@@ -376,6 +414,15 @@ class MainActivity : AppCompatActivity() {
                     task.enabled = checked
                     TaskStore.update(this@MainActivity, task)
                     TaskScheduler.schedule(this@MainActivity, task)
+                }
+
+                run.setOnClickListener {
+                    toast("正在运行「${task.name}」…")
+                    Thread {
+                        TaskExecutor.execute(this@MainActivity, task)
+                        ExecutionLog.add(this@MainActivity, "手动运行「${task.name}」")
+                        runOnUiThread { toast("运行完成") }
+                    }.start()
                 }
 
                 delete.setOnClickListener {

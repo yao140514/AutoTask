@@ -17,6 +17,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 val task = TaskStore.get(context, id)
                 if (task != null && task.enabled) {
                     TaskExecutor.execute(context, task)
+                    ExecutionLog.add(context, "执行「${task.name}」")
                     when (task.repeat) {
                         RepeatMode.DAILY, RepeatMode.WEEKLY -> TaskScheduler.schedule(context, task)
                         RepeatMode.ONCE -> {

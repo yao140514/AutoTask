@@ -15,10 +15,10 @@
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="12dp"
-            android:background="@drawable/bg_status"
+            android:background="@drawable/bg_glass"
             android:textSize="13sp"
             android:lineSpacingExtra="2dp"
+            android:textColor="#FFFFFF"
             android:text="状态" />
 
         <LinearLayout
@@ -33,6 +33,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="执行方式"
+                android:textColor="#FFFFFF"
                 android:textSize="14sp" />
 
             <Spinner
@@ -84,6 +85,38 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnModule"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="增强模块" />
+
+            <Button
+                android:id="@+id/btnTutorial"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:text="使用教程" />
+
+            <Button
+                android:id="@+id/btnLog"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="日志" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
@@ -92,6 +125,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="后台服务（常驻通知，保证可靠触发）"
+                android:textColor="#FFFFFF"
                 android:textSize="14sp" />
 
             <Switch
@@ -107,7 +141,8 @@
             android:layout_marginBottom="4dp"
             android:text="任务列表"
             android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:textColor="#FFFFFF" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler"
