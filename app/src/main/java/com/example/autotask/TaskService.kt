@@ -11,14 +11,15 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 
 /**
- * 前台服务：常驻通知提升进程优先级，降低被系统/厂商后台清理的概率，
- * 从而保证闹钟可靠触发。
+ * 前台服务：常驻通知提升进程优先级，保证闹钟可靠触发；
+ * 同时负责在闹钟触发后执行任务（后台线程，不受 goAsync 生命周期限制）。
  */
 class TaskService : Service() {
 
     companion object {
         const val CHANNEL = "autotask"
         const val NOTIFICATION_ID = 1
+        private const val ACTION_EXECUTE = "com.example.autotask.EXECUTE"
 
         fun start(c: Context) {
             c.startForegroundService(Intent(c, TaskService::class.java))
@@ -26,6 +27,21 @@ class TaskService : Service() {
 
         fun stop(c: Context) {
             c.stopService(Intent(c, TaskService::class.java))
+        }
+
+        /** 触发某个任务的执行 */
+        fun execute(c: Context, taskId: Int) {
+            val i = Intent(c, TaskService::class.java).setAction(ACTION_EXECUTE)
+            i.putExtra("taskId", taskId)
+            try {
+                c.startForegroundService(i)
+            } catch (e: Exception) {
+                // 极端情况下后台启动受限时降级为普通启动
+                try {
+                    c.startService(i)
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 
@@ -35,10 +51,33 @@ class TaskService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_EXECUTE) {
+            val taskId = intent.getIntExtra("taskId", -1)
+            Thread { runTask(taskId) }.start()
+        }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun runTask(taskId: Int) {
+        try {
+            val task = TaskStore.get(this, taskId) ?: return
+            if (!task.enabled) return
+            TaskExecutor.execute(this, task)
+            ExecutionLog.add(this, "执行「${task.name}」")
+            when (task.repeat) {
+                RepeatMode.DAILY, RepeatMode.WEEKLY -> TaskScheduler.schedule(this, task)
+                RepeatMode.ONCE -> {
+                    task.enabled = false
+                    TaskStore.update(this, task)
+                    TaskScheduler.cancel(this, task.id)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     private fun buildNotification(): Notification {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -51,7 +90,7 @@ class TaskService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("定时任务运行中")
-            .setContentText("将在设定时间自动执行点击 / 打开应用 / 锁屏")
+            .setContentText("将在设定时间自动执行任务")
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
             .setContentIntent(pi)

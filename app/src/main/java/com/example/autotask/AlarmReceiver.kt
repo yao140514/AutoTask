@@ -6,32 +6,11 @@ import android.content.Intent
 
 /**
  * 闹钟触发后进入这里。
- * 用 goAsync() 让系统在异步执行期间保持唤醒锁，避免休眠中断 root 命令。
+ * 委托给前台服务 TaskService 执行，避免 goAsync() 约 10 秒的生命周期限制。
  */
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val result = goAsync()
-        Thread {
-            try {
-                val id = intent.getIntExtra("taskId", -1)
-                val task = TaskStore.get(context, id)
-                if (task != null && task.enabled) {
-                    TaskExecutor.execute(context, task)
-                    ExecutionLog.add(context, "执行「${task.name}」")
-                    when (task.repeat) {
-                        RepeatMode.DAILY, RepeatMode.WEEKLY -> TaskScheduler.schedule(context, task)
-                        RepeatMode.ONCE -> {
-                            task.enabled = false
-                            TaskStore.update(context, task)
-                            TaskScheduler.cancel(context, task.id)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                result.finish()
-            }
-        }.start()
+        val id = intent.getIntExtra("taskId", -1)
+        TaskService.execute(context, id)
     }
 }

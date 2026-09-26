@@ -56,6 +56,7 @@ object TaskExecutor {
             ActionType.SET_VAR -> vars[a.varName] = a.varValue
             ActionType.CONDITION -> {} // 已在 execute 中处理
             ActionType.HTTP_REQUEST -> httpRequest(a.url, a.httpMethod)
+            ActionType.SCREENSHOT -> screenshot(backend, context)
         }
     }
 
@@ -189,7 +190,7 @@ object TaskExecutor {
 
     private fun openUrl(context: Context, url: String) {
         if (url.isBlank()) return
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(normalizeUrl(url)))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(intent)
@@ -197,6 +198,10 @@ object TaskExecutor {
             e.printStackTrace()
         }
     }
+
+    /** 无协议时自动补全 http:// */
+    private fun normalizeUrl(url: String): String =
+        if (url.contains("://")) url else "http://$url"
 
     // ==================== 通知 ====================
 
@@ -233,23 +238,29 @@ object TaskExecutor {
     // ==================== 音量 ====================
 
     private fun setVolume(backend: Backend, context: Context, stream: VolumeStream, volume: Int) {
-        when (backend) {
-            Backend.ROOT -> Shell.cmd("media volume --stream ${stream.streamCode} --set ${(volume * 15) / 100}").exec()
-            Backend.SHIZUKU -> shizuku("media volume --stream ${stream.streamCode} --set ${(volume * 15) / 100}")
-            Backend.ACCESSIBILITY -> {
-                try {
-                    val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                    val max = am.getStreamMaxVolume(stream.streamCode)
-                    val v = (volume * max) / 100
-                    am.setStreamVolume(stream.streamCode, v, 0)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+        val v = volume.coerceIn(0, 100)
+        // 优先用 AudioManager（标准 API，最可靠）
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (am != null) {
+            try {
+                val max = am.getStreamMaxVolume(stream.streamCode)
+                val level = (v * max) / 100
+                am.setStreamVolume(stream.streamCode, level, 0)
+                return
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+        }
+        // 回退：root/shizuku shell（media 命令，0-15 级）
+        val idx = (v * 15) / 100
+        when (backend) {
+            Backend.ROOT -> Shell.cmd("media volume --stream ${stream.streamCode} --set $idx").exec()
+            Backend.SHIZUKU -> shizuku("media volume --stream ${stream.streamCode} --set $idx")
+            else -> {}
         }
     }
 
-    // ==================== 随机延时 / HTTP 请求 ====================
+    // ==================== 随机延时 / HTTP 请求 / 截图 ====================
 
     private fun randomDelay(min: Int, max: Int) {
         val lo = min.coerceAtLeast(0)
@@ -262,7 +273,7 @@ object TaskExecutor {
         if (url.isBlank()) return
         var conn: HttpURLConnection? = null
         try {
-            conn = URL(url).openConnection() as HttpURLConnection
+            conn = URL(normalizeUrl(url)).openConnection() as HttpURLConnection
             conn.requestMethod = method.uppercase().ifBlank { "GET" }
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
@@ -279,6 +290,25 @@ object TaskExecutor {
     }
 
     // ==================== Shizuku 执行 ====================
+
+    private fun screenshot(backend: Backend, context: Context) {
+        when (backend) {
+            Backend.ROOT, Backend.SHIZUKU -> {
+                val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+                val path = "/sdcard/Pictures/AutoTask_$ts.png"
+                if (backend == Backend.ROOT) {
+                    Shell.cmd("mkdir -p /sdcard/Pictures").exec()
+                    Shell.cmd("screencap -p $path").exec()
+                } else {
+                    shizuku("mkdir -p /sdcard/Pictures")
+                    shizuku("screencap -p $path")
+                }
+            }
+            Backend.ACCESSIBILITY ->
+                AutoAccessibilityService.instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+        }
+    }
 
     private fun shizuku(cmd: String): Boolean {
         if (!ShizukuUtil.isPermissionGranted()) return false

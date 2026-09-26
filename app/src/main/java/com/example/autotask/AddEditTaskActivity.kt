@@ -8,16 +8,15 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.NumberPicker
 import android.widget.Spinner
 import android.widget.TextView
-import android.widget.TimePicker
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
@@ -27,8 +26,9 @@ class AddEditTaskActivity : AppCompatActivity() {
     private val actions = mutableListOf<Action>()
 
     private lateinit var nameInput: EditText
-    private lateinit var timePicker: TimePicker
-    private lateinit var secondPicker: NumberPicker
+    private lateinit var etHour: EditText
+    private lateinit var etMinute: EditText
+    private lateinit var etSecond: EditText
     private lateinit var repeatSpinner: Spinner
     private lateinit var weeklySection: LinearLayout
     private lateinit var actionListContainer: LinearLayout
@@ -51,9 +51,24 @@ class AddEditTaskActivity : AppCompatActivity() {
         setContentView(R.layout.activity_add_edit)
         title = if (intent.getIntExtra("id", -1) > 0) "编辑任务" else "新建任务"
 
+        // 修复 ColorOS 上 EditText 获得焦点但输入法 "is not served" 导致键盘不弹出的问题
+        window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->
+            if (newFocus is EditText) {
+                newFocus.postDelayed({
+                    try {
+                        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                                as android.view.inputmethod.InputMethodManager
+                        imm.showSoftInput(newFocus, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                    } catch (_: Exception) {
+                    }
+                }, 150)
+            }
+        }
+
         nameInput = findViewById(R.id.etName)
-        timePicker = findViewById(R.id.timePicker)
-        secondPicker = findViewById(R.id.secondPicker)
+        etHour = findViewById(R.id.etHour)
+        etMinute = findViewById(R.id.etMinute)
+        etSecond = findViewById(R.id.etSecond)
         repeatSpinner = findViewById(R.id.repeatSpinner)
         weeklySection = findViewById(R.id.weeklySection)
         actionListContainer = findViewById(R.id.actionListContainer)
@@ -65,10 +80,6 @@ class AddEditTaskActivity : AppCompatActivity() {
         cbWed = findViewById(R.id.cbWed); cbThu = findViewById(R.id.cbThu)
         cbFri = findViewById(R.id.cbFri); cbSat = findViewById(R.id.cbSat)
         cbSun = findViewById(R.id.cbSun)
-
-        timePicker.setIs24HourView(true)
-        secondPicker.minValue = 0
-        secondPicker.maxValue = 59
 
         val repeatAdapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_item,
@@ -96,11 +107,17 @@ class AddEditTaskActivity : AppCompatActivity() {
         refreshActionList()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // 清空悬浮取点回调，避免 Activity 销毁后回调触发崩溃
+        CoordinatePickerService.onPick = null
+    }
+
     private fun loadTask(t: Task) {
         nameInput.setText(t.name)
-        timePicker.hour = t.hour
-        timePicker.minute = t.minute
-        secondPicker.value = t.second
+        etHour.setText(t.hour.toString())
+        etMinute.setText(t.minute.toString())
+        etSecond.setText(t.second.toString())
         repeatSpinner.setSelection(t.repeat.ordinal)
         setWeekdays(t.weekdays)
         actions.clear()
@@ -126,11 +143,21 @@ class AddEditTaskActivity : AppCompatActivity() {
             }
             row.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-            val editBtn = Button(this).apply { text = "编辑" }
+            val editBtn = Button(this).apply {
+                text = "编辑"
+                textSize = 12f
+                minWidth = 0
+                setPadding(dp(10), 0, dp(10), 0)
+            }
             editBtn.setOnClickListener { showActionDialog(i) }
             row.addView(editBtn)
 
-            val delBtn = Button(this).apply { text = "删" }
+            val delBtn = Button(this).apply {
+                text = "删"
+                textSize = 12f
+                minWidth = 0
+                setPadding(dp(10), 0, dp(10), 0)
+            }
             delBtn.setOnClickListener {
                 actions.removeAt(i)
                 refreshActionList()
@@ -220,6 +247,7 @@ class AddEditTaskActivity : AppCompatActivity() {
                 }
                 ActionType.OPEN_URL -> paramsBox.addView(input("url", "链接地址", d.url))
                 ActionType.LOCK_SCREEN -> paramsBox.addView(coordText("锁屏：到点熄灭屏幕（无需参数）", "hint"))
+                ActionType.SCREENSHOT -> paramsBox.addView(coordText("截图：到点自动截图保存到相册（无需参数）", "hint"))
                 ActionType.NOTIFY -> paramsBox.addView(input("message", "提醒内容", d.message))
                 ActionType.SHELL -> paramsBox.addView(input("shell", "Shell 命令", d.shellCmd))
                 ActionType.VOLUME -> {
@@ -251,13 +279,7 @@ class AddEditTaskActivity : AppCompatActivity() {
             }
         }
 
-        typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = rebuildParams()
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-        rebuildParams()
-
-        currentDialog = AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(if (index >= 0) "编辑动作 ${index + 1}" else "添加动作")
             .setView(container)
             .setPositiveButton("确定") { _, _ ->
@@ -266,7 +288,40 @@ class AddEditTaskActivity : AppCompatActivity() {
                 refreshActionList()
             }
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+
+        // 修复：AlertDialog 默认带 FLAG_ALT_FOCUSABLE_IM，导致输入法 "is not served"
+        fun updateSoftInput() {
+            val t = ActionType.values()[typeSpinner.selectedItemPosition]
+            dialog.window?.apply {
+                clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+                setSoftInputMode(
+                    if (typeHasEditText(t))
+                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                                WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
+                    else
+                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                )
+            }
+        }
+
+        typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                rebuildParams()
+                updateSoftInput()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        rebuildParams()
+        updateSoftInput()
+
+        currentDialog = dialog
+        dialog.show()
+    }
+
+    private fun typeHasEditText(t: ActionType): Boolean = when (t) {
+        ActionType.CLICK, ActionType.KEY_EVENT, ActionType.OPEN_APP, ActionType.LOCK_SCREEN, ActionType.SCREENSHOT -> false
+        else -> true
     }
 
     /** 从对话框控件读取值写入 draft */
@@ -322,6 +377,23 @@ class AddEditTaskActivity : AppCompatActivity() {
             this.tag = tag
             this.hint = hint
             setText(value)
+            // 数字类字段用数字键盘
+            if (tag in setOf("duration", "mindelay", "maxdelay", "volume", "batt")) {
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            }
+            // 修复 ColorOS 上对话框输入框「is not served」导致键盘不弹出的问题
+            setOnFocusChangeListener { v, hasFocus ->
+                if (hasFocus) {
+                    v.postDelayed({
+                        try {
+                            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                                    as android.view.inputmethod.InputMethodManager
+                            imm.showSoftInput(v, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                        } catch (_: Exception) {
+                        }
+                    }, 150)
+                }
+            }
         }
 
     private fun coordText(text: String, tag: String): TextView =
@@ -452,9 +524,9 @@ class AddEditTaskActivity : AppCompatActivity() {
         val task = Task(
             id = if (editingId > 0) editingId else TaskStore.nextId(this),
             name = name,
-            hour = timePicker.hour,
-            minute = timePicker.minute,
-            second = secondPicker.value,
+            hour = etHour.text.toString().trim().toIntOrNull()?.coerceIn(0, 23) ?: 0,
+            minute = etMinute.text.toString().trim().toIntOrNull()?.coerceIn(0, 59) ?: 0,
+            second = etSecond.text.toString().trim().toIntOrNull()?.coerceIn(0, 59) ?: 0,
             repeat = repeat,
             enabled = true,
             weekdays = if (repeat == RepeatMode.WEEKLY) readWeekdays() else 0,

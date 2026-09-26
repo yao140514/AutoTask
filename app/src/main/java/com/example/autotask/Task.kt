@@ -29,7 +29,8 @@ enum class ActionType(val label: String) {
     RANDOM_DELAY("随机延时"),
     SET_VAR("设置变量"),
     CONDITION("条件判断"),
-    HTTP_REQUEST("HTTP 请求");
+    HTTP_REQUEST("HTTP 请求"),
+    SCREENSHOT("截图");
 }
 
 /** 音量通道（streamCode 同时是 AudioManager 的流类型常量） */
@@ -81,6 +82,7 @@ data class Action(
             ActionType.SET_VAR -> "变量 $varName=$varValue"
             ActionType.CONDITION -> "条件: ${conditionText()}"
             ActionType.HTTP_REQUEST -> "HTTP $httpMethod $url"
+            ActionType.SCREENSHOT -> "截图"
         }
 
     fun conditionText(): String = when {

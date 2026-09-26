@@ -41,6 +41,11 @@ class MainActivity : AppCompatActivity() {
 
     private var updateChecked = false
 
+    @Volatile
+    private var cachedModuleVersion: String? = null
+    @Volatile
+    private var moduleVersionLoaded = false
+
     private val shizukuListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
         toast(if (grantResult == PackageManager.PERMISSION_GRANTED) "Shizuku 授权成功 ✅" else "Shizuku 授权被拒绝")
         updateStatus()
@@ -105,6 +110,7 @@ class MainActivity : AppCompatActivity() {
 
         TaskService.start(this)
         Shizuku.addRequestPermissionResultListener(shizukuListener)
+        refreshModuleVersionAsync()
         checkPermissions()
     }
 
@@ -226,6 +232,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkForUpdate(manual: Boolean) {
         UpdateChecker.check { release ->
+            // 在后台线程读取模块版本，避免阻塞主线程
+            val moduleVersion = readModuleVersionBlocking()
             runOnUiThread {
                 if (release == null) {
                     if (manual) toast("检查更新失败，请稍后重试")
@@ -233,7 +241,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 val appVersion = BuildConfig.VERSION_NAME
                 val appUpdate = UpdateChecker.isNewer(release.version, appVersion)
-                val moduleVersion = readModuleVersion()
                 val moduleUpdate = moduleVersion != null && UpdateChecker.isNewer(release.version, moduleVersion)
 
                 if (!appUpdate && !moduleUpdate) {
@@ -281,15 +288,39 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 读取已安装增强模块的版本号（未安装返回 null） */
+    /** 读取模块版本（非阻塞，返回缓存值；未加载返回 null） */
     private fun readModuleVersion(): String? {
+        if (!moduleVersionLoaded) {
+            refreshModuleVersionAsync()
+            return null
+        }
+        return cachedModuleVersion
+    }
+
+    /** 阻塞读取模块版本并更新缓存（应在后台线程调用） */
+    private fun readModuleVersionBlocking(): String? {
         return try {
             val r = Shell.cmd("cat /data/adb/modules/autotask/module.prop").exec()
-            r.out.firstOrNull { it.startsWith("version=") }
+            val v = r.out.firstOrNull { it.startsWith("version=") }
                 ?.removePrefix("version=")?.trim()?.removePrefix("v")?.ifBlank { null }
+            cachedModuleVersion = v
+            moduleVersionLoaded = true
+            v
         } catch (e: Exception) {
+            moduleVersionLoaded = true
             null
         }
+    }
+
+    /** 后台刷新模块版本，完成后更新状态栏并检查是否提示下载模块 */
+    private fun refreshModuleVersionAsync() {
+        Thread {
+            readModuleVersionBlocking()
+            runOnUiThread {
+                updateStatus()
+                checkAndPromptEnhancedModule()
+            }
+        }.start()
     }
 
     // ==================== 备份 / 恢复 ====================
@@ -321,6 +352,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndPromptEnhancedModule() {
         if (!Shell.getShell().isRoot) return
+        if (!moduleVersionLoaded) return // 版本尚未加载，等待异步加载完成
         if (readModuleVersion() != null) return
         val prefs = getSharedPreferences("module_prompt", MODE_PRIVATE)
         if (prefs.getBoolean("prompted", false)) return
@@ -339,7 +371,10 @@ class MainActivity : AppCompatActivity() {
             AlertDialog.Builder(this)
                 .setTitle("增强模块")
                 .setMessage("已安装增强模块 v$version")
-                .setPositiveButton("知道了", null)
+                .setPositiveButton("配置模块") { _, _ ->
+                    startActivity(Intent(this, ModuleConfigActivity::class.java))
+                }
+                .setNegativeButton("关闭", null)
                 .show()
         } else {
             AlertDialog.Builder(this)
@@ -435,6 +470,18 @@ class MainActivity : AppCompatActivity() {
                     val i = Intent(this@MainActivity, AddEditTaskActivity::class.java)
                     i.putExtra("id", task.id)
                     startActivity(i)
+                }
+                itemView.setOnLongClickListener {
+                    val copy = task.copy(
+                        id = TaskStore.nextId(this@MainActivity),
+                        name = task.name + "（副本）",
+                        enabled = true
+                    )
+                    TaskStore.add(this@MainActivity, copy)
+                    TaskScheduler.schedule(this@MainActivity, copy)
+                    refresh()
+                    toast("已复制任务「${task.name}」")
+                    true
                 }
             }
         }
