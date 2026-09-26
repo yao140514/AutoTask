@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # =============================================================
-#  AutoTask 增强模块（v0.1.0）
+#  AutoTask 增强模块（v0.1.5）
 #  Root 守护进程：定时执行任务，支持自动解锁锁屏及多种动作
 # =============================================================
 
@@ -27,9 +27,14 @@ if [ ! -f "$CONF" ]; then
 #    notify 标题|内容          发送通知（| 分隔标题和内容）
 #    shell 命令               执行 shell 命令
 #    volume 通道 0-100        调整音量（通道: media/ring/notification/alarm）
+#    brightness 0-255         调整屏幕亮度
 #    delay 秒                 延时（可小数，如 0.5）
 #    randdelay 最小 最大       随机延时（秒）
-#    http URL                 发送 HTTP GET 请求（仅 http://，https 不支持）
+#    http URL                 发送 HTTP GET 请求（仅 http://）
+#    screenshot               截图（保存到 /sdcard/Pictures）
+#    setvar 名 值             设置变量（shell 命令中可用 $名 引用）
+#    if 条件                  条件判断（screen_on/screen_off/battery>N，
+#                             条件不满足则跳过下一行同一时间的任务）
 #
 #  【增强功能】自动解锁：设置下面这行，执行任务前自动输入 PIN 解锁
 #    unlock_pin 你的锁屏密码
@@ -50,6 +55,10 @@ PIN=$(grep -E '^unlock_pin[[:space:]]' "$CONF" | head -1 | awk '{print $2}')
 # ---------- 工具函数 ----------
 screen_on() {
   dumpsys power 2>/dev/null | grep -q "mWakefulness=Awake"
+}
+
+battery_level() {
+  dumpsys battery 2>/dev/null | grep "level:" | awk '{print $2}'
 }
 
 ensure_unlocked() {
@@ -81,6 +90,7 @@ volcode() {
 (
   while true; do
     now="$(date +%H:%M:%S)"
+    skip_next=0
 
     while IFS= read -r line || [ -n "$line" ]; do
       line="$(printf '%s' "$line" | tr -d '\r')"
@@ -89,6 +99,13 @@ volcode() {
       set -- $line
       t="$1"; typ="$2"
       [ "$t" = "$now" ] || continue
+
+      # 条件跳过的下一行（同一时间）
+      if [ "$skip_next" = 1 ]; then
+        skip_next=0
+        echo "[$now] 跳过（条件不满足）: $typ" >> "$LOG"
+        continue
+      fi
 
       # 时间、类型之后的剩余部分（保留内部空格）
       rest="$(printf '%s' "$line" | sed 's/^[^ ]* [^ ]* //')"
@@ -144,6 +161,11 @@ volcode() {
           cmd media_session volume --set "$idx" --stream "$stream" 2>/dev/null
           echo "[$now] volume $stream ${4:-50}" >> "$LOG"
           ;;
+        brightness)
+          settings put system screen_brightness_mode 0 2>/dev/null
+          settings put system screen_brightness "${3:-128}" 2>/dev/null
+          echo "[$now] brightness ${3:-128}" >> "$LOG"
+          ;;
         delay)
           sleep "${3:-1}"
           echo "[$now] delay ${3:-1}" >> "$LOG"
@@ -163,15 +185,37 @@ volcode() {
               echo "[$now] http 跳过(https 需 curl，本机无): $url" >> "$LOG"
               ;;
             *)
-              rest=$(printf '%s' "$url" | sed 's|^http://||')
-              host=$(printf '%s' "$rest" | cut -d'/' -f1)
-              path=$(printf '%s' "$rest" | cut -d'/' -f2-)
+              rest2=$(printf '%s' "$url" | sed 's|^http://||')
+              host=$(printf '%s' "$rest2" | cut -d'/' -f1)
+              path=$(printf '%s' "$rest2" | cut -d'/' -f2-)
               port=80
               case "$host" in *:*) port=${host##*:}; host=${host%:*};; esac
               printf 'GET /%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: AutoTask\r\n\r\n' "$path" "$host" | nc -w 5 "$host" "$port" >/dev/null 2>&1
               echo "[$now] http $url" >> "$LOG"
               ;;
           esac
+          ;;
+        screenshot)
+          mkdir -p /sdcard/Pictures
+          f="/sdcard/Pictures/AutoTask_$(date +%Y%m%d_%H%M%S).png"
+          screencap -p "$f"
+          echo "[$now] screenshot $f" >> "$LOG"
+          ;;
+        setvar)
+          export "$3"="$4"
+          echo "[$now] setvar $3=$4" >> "$LOG"
+          ;;
+        if)
+          case "$3" in
+            screen_on) screen_on || skip_next=1 ;;
+            screen_off) screen_on && skip_next=1 ;;
+            battery\>*)
+              n=${3#battery>}
+              lvl=$(battery_level)
+              [ -n "$lvl" ] && [ "$lvl" -gt "$n" ] 2>/dev/null || skip_next=1
+              ;;
+          esac
+          echo "[$now] if $3" >> "$LOG"
           ;;
       esac
     done < "$CONF"

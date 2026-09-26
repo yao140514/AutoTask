@@ -57,7 +57,7 @@ class CoordinatePickerService : Service() {
         btn.text = "🔘 点我开始取点"
         btn.setTextColor(Color.WHITE)
         btn.background = GradientDrawable().apply {
-            setColor(Color.parseColor("#3F51B5"))
+            setColor(Color.parseColor("#00897B"))
             cornerRadius = dp(24).toFloat()
         }
         btn.setOnClickListener {
@@ -125,7 +125,7 @@ class CoordinatePickerService : Service() {
         root.background = GradientDrawable().apply {
             setColor(Color.rgb(32, 32, 36))
             cornerRadius = dp(14).toFloat()
-            setStroke(dp(1), Color.parseColor("#4FC3F7"))
+            setStroke(dp(1), Color.parseColor("#4DB6AC"))
         }
 
         val title = TextView(this)
@@ -135,7 +135,7 @@ class CoordinatePickerService : Service() {
 
         val coord = TextView(this)
         coord.text = "X: $x    Y: $y"
-        coord.setTextColor(Color.parseColor("#4FC3F7"))
+        coord.setTextColor(Color.parseColor("#4DB6AC"))
         coord.textSize = 20f
         coord.setPadding(0, dp(10), 0, dp(14))
 

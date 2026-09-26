@@ -60,12 +60,13 @@ class TaskService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var recordProcess: Process? = null
+
     private fun runTask(taskId: Int) {
         try {
             val task = TaskStore.get(this, taskId) ?: return
             if (!task.enabled) return
             TaskExecutor.execute(this, task)
-            ExecutionLog.add(this, "执行「${task.name}」")
             when (task.repeat) {
                 RepeatMode.DAILY, RepeatMode.WEEKLY -> TaskScheduler.schedule(this, task)
                 RepeatMode.ONCE -> {

@@ -22,20 +22,56 @@ import kotlin.random.Random
  */
 object TaskExecutor {
 
+    @Volatile
+    private var recordProcess: Process? = null
+
     fun execute(context: Context, task: Task) {
         val backend = AppSettings.getBackend(context)
+        val recording = AppSettings.isRecordEnabled(context)
+        if (recording) startRecording(context)
         val vars = HashMap<String, String>()
         var skipNext = false
-        for (action in task.actions) {
+        ExecutionLog.add(context, "▶ 开始执行「${task.name}」（${task.actions.size} 个动作）")
+        for ((i, action) in task.actions.withIndex()) {
             if (skipNext) {
                 skipNext = false
+                ExecutionLog.add(context, "  · 动作 ${i + 1}/${task.actions.size}: ${action.summary}（条件跳过）")
                 continue
             }
             if (action.type == ActionType.CONDITION) {
+                ExecutionLog.add(context, "  · 动作 ${i + 1}/${task.actions.size}: ${action.summary}")
                 if (!evalCondition(context, action, vars)) skipNext = true
             } else {
+                ExecutionLog.add(context, "  · 动作 ${i + 1}/${task.actions.size}: ${action.summary}")
                 executeAction(context, backend, action, vars)
             }
+        }
+        ExecutionLog.add(context, "✓ 「${task.name}」执行完成")
+        if (recording) stopRecording(context)
+    }
+
+    private fun startRecording(context: Context) {
+        try {
+            val dir = AppSettings.getRecordDir(context)
+            val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+                .format(java.util.Date())
+            val file = "$dir/AutoTask_$ts.mp4"
+            Shell.cmd("mkdir -p $dir").exec()
+            recordProcess = Runtime.getRuntime().exec(arrayOf("su", "-c", "screenrecord $file >/dev/null 2>&1"))
+            ExecutionLog.add(context, "🎬 开始屏幕录制：$file")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stopRecording(context: Context) {
+        try {
+            recordProcess?.destroy()
+            recordProcess = null
+            Shell.cmd("pkill -f screenrecord").exec()
+            ExecutionLog.add(context, "⏹ 屏幕录制已停止")
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -294,14 +330,15 @@ object TaskExecutor {
     private fun screenshot(backend: Backend, context: Context) {
         when (backend) {
             Backend.ROOT, Backend.SHIZUKU -> {
+                val dir = AppSettings.getScreenshotDir(context)
                 val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
                     .format(java.util.Date())
-                val path = "/sdcard/Pictures/AutoTask_$ts.png"
+                val path = "$dir/AutoTask_$ts.png"
                 if (backend == Backend.ROOT) {
-                    Shell.cmd("mkdir -p /sdcard/Pictures").exec()
+                    Shell.cmd("mkdir -p $dir").exec()
                     Shell.cmd("screencap -p $path").exec()
                 } else {
-                    shizuku("mkdir -p /sdcard/Pictures")
+                    shizuku("mkdir -p $dir")
                     shizuku("screencap -p $path")
                 }
             }

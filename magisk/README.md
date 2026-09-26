@@ -7,7 +7,7 @@
 - 🔓 **自动解锁锁屏**：配置 `unlock_pin` 后，执行任务前自动唤醒并输入 PIN 解锁
 - 🚀 **更稳定后台执行**：以系统进程运行，不依赖 App 存活
 
-## 支持的任务类型
+## 支持的任务类型（18 种）
 
 | 类型 | 格式 | 说明 |
 |------|------|------|
@@ -20,10 +20,14 @@
 | 锁屏 | `lock` | 熄灭屏幕 |
 | 通知 | `notify 标题\|内容` | 发送通知 |
 | 命令 | `shell 命令` | 执行 shell 命令 |
-| 音量 | `volume 通道 0-100` | 通道: media/ring/notification/alarm |
+| 音量 | `volume 通道 0-100` | media/ring/notification/alarm |
+| 亮度 | `brightness 0-255` | 调整屏幕亮度 |
 | 延时 | `delay 秒` | 可小数 |
 | 随机延时 | `randdelay 最小 最大` | 秒 |
-| HTTP | `http URL` | 发送 GET 请求（仅 http://，走 nc） |
+| HTTP | `http URL` | 发送 GET（仅 http://，走 nc） |
+| 截图 | `screenshot` | 保存到 /sdcard/Pictures |
+| 变量 | `setvar 名 值` | shell 中可用 `$名` 引用 |
+| 条件 | `if 条件` | screen_on/screen_off/battery>N，不满足跳过下一行 |
 
 ## 配置
 
@@ -40,6 +44,21 @@ unlock_pin 123456
 ```
 
 修改后无需重启，守护进程每秒读取配置自动生效。
+
+## 变量与条件示例
+
+```
+# 设置变量，shell 里用 $myvar 引用
+08:00:00 setvar myvar hello
+
+# 条件判断：屏幕黑着则跳过下一行（同一时间的任务）
+08:05:00 if screen_off
+08:05:00 click 540 1200
+
+# 电量大于 50 才执行下一行
+08:10:00 if battery>50
+08:10:00 app com.android.settings
+```
 
 ## 查看日志
 

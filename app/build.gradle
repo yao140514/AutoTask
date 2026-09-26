@@ -11,8 +11,8 @@ android {
         applicationId "com.example.autotask"
         minSdk 24
         targetSdk 34
-        versionCode 10
-        versionName "0.1.0"
+        versionCode 15
+        versionName "0.1.5"
     }
 
     buildTypes {

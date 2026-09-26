@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#6C63FF</color>
-    <color name="primary_dark">#5A52D5</color>
-    <color name="accent">#4FC3F7</color>
+    <color name="primary">#00796B</color>
+    <color name="accent">#009688</color>
+    <color name="gradient_start">#F1F6F4</color>
+    <color name="gradient_center">#E6EFEC</color>
+    <color name="gradient_end">#D8E6E1</color>
+    <color name="glass_bg">#8CFFFFFF</color>
+    <color name="glass_stroke">#14000000</color>
+    <color name="text_primary">#10201C</color>
+    <color name="text_secondary">#8A10201C</color>
+    <color name="accent_text">#00796B</color>
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
 </resources>
